@@ -32,6 +32,13 @@ latency_hist = Histogram(
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5),
 )
 
+dedup_requests_total = Counter(
+    "phishradar_dedup_requests_total", "Total dedup requests", registry=registry
+)
+dedup_duplicates_total = Counter(
+    "phishradar_dedup_duplicates_total", "Total duplicates detected", registry=registry
+)
+
 
 # Correlation id context
 correlation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(

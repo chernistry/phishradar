@@ -21,6 +21,8 @@ from .logging_metrics import (
     metrics_router,
     req_counter,
     setup_logging,
+    dedup_requests_total,
+    dedup_duplicates_total,
 )
 
 
@@ -40,6 +42,16 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         emb = OllamaEmbeddings()
         dim = await emb.dim()
         logging.getLogger(__name__).info(f"EMBED_DIM={dim} (model={emb.model})")
+        app.state.embed_dim = dim  # type: ignore[attr-defined]
+        # Ensure Qdrant collection and payload indexes
+        try:
+            from .qdrant_client import QdrantStore
+
+            store = QdrantStore()
+            await store.ensure_collection(dim)
+            await store.ensure_payload_indexes()
+        except Exception as qe:
+            logging.getLogger(__name__).warning(f"Qdrant ensure failed: {qe}")
     except Exception as e:
         logging.getLogger(__name__).warning(f"Embedding probe failed: {e}")
     yield
@@ -99,9 +111,10 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok", "env": settings.env}
 
 # Embeddings endpoint (Ticket 3)
-from fastapi import Body  # noqa: E402
-from .models import EmbedIn, EmbedOut  # noqa: E402
+from fastapi import Body, HTTPException  # noqa: E402
+from .models import EmbedIn, EmbedOut, DedupIn, DedupOut  # noqa: E402
 from .embeddings import OllamaEmbeddings  # noqa: E402
+from .dedup import upsert_and_check  # noqa: E402
 
 
 @app.post("/embed", response_model=EmbedOut)
@@ -111,6 +124,21 @@ async def embed(payload: EmbedIn = Body(...)) -> EmbedOut:
         f"{payload.url} | {payload.title} | {payload.domain}"
     )
     return EmbedOut(vector=vector, model=model, ms=ms)
+
+
+@app.post("/dedup", response_model=DedupOut)
+async def dedup(body: DedupIn) -> DedupOut:
+    dedup_requests_total.inc()
+    if not body.vector:
+        raise HTTPException(status_code=400, detail="empty vector")
+    # Validate dimension if known
+    embed_dim = getattr(app.state, "embed_dim", None)  # type: ignore[attr-defined]
+    if embed_dim is not None and len(body.vector) != int(embed_dim):
+        raise HTTPException(status_code=400, detail="vector dimension mismatch")
+    dup, sim, qid = await upsert_and_check(str(body.url), body.vector, body.payload)
+    if dup:
+        dedup_duplicates_total.inc()
+    return DedupOut(is_duplicate=dup, similarity=sim, qdrant_id=qid)
 
 
 def main() -> None:
