@@ -1,0 +1,22 @@
+display_information:
+  name: PhishRadar
+  description: Phishing URL dedup + HITL approvals
+  background_color: "#3F8CFF"
+features:
+  bot_user:
+    display_name: PhishRadar Bot
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - chat:write.public
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://PLACEHOLDER_PUBLIC_HOST/hooks/slack
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  is_hosted: false
+  token_rotation_enabled: false
+
