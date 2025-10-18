@@ -10,7 +10,8 @@ TITLE=${2:-Example}
 DOMAIN=${3:-example.com}
 
 # 1) Embed
-EMBED_JSON=$(API="$API" "$PWD/scripts/embed.sh" "$URL" "$TITLE" "$DOMAIN" || true)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EMBED_JSON=$(API="$API" "$SCRIPT_DIR/embed.sh" "$URL" "$TITLE" "$DOMAIN" || true)
 if [ -z "$EMBED_JSON" ]; then
   echo '{"ok":false,"error":"embed failed"}'
   exit 1

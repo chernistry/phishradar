@@ -18,16 +18,16 @@ quick architecture map and an interview-ready summary.
 flowchart TD
   CRON[n8n Cron / 10m] --> F1[POST /ingest/fetch]
   F1 --> ENR[POST /enrich]
-  ENR --> EMB[POST /embed (Ollama)]
-  EMB --> DED[POST /dedup (Qdrant)]
+  ENR --> EMB[POST /embed Ollama]
+  EMB --> DED[POST /dedup Qdrant]
   DED -->|is_duplicate=true| LOG1[POST /log events_raw]
   DED -->|is_duplicate=false| SLK[POST /notify/slack]
   SLK --> LOG2[POST /log alerts]
   SLACK[Slack Button] --> HOOK[POST /hooks/slack]
-  HOOK --> LOG3[POST /log alerts(update)]
-  DED --> QDR[(Qdrant)]
-  EMB --> OLL[(Ollama)]
-  LOG1 --> BQ[(BigQuery)]
+  HOOK --> LOG3[POST /log alerts update]
+  DED --> QDR[Qdrant]
+  EMB --> OLL[Ollama]
+  LOG1 --> BQ[BigQuery]
   LOG2 --> BQ
   LOG3 --> BQ
 ```

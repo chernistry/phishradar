@@ -37,7 +37,11 @@ class Settings:
     google_app_credentials: str | None = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
     # Dedup/limits
+    # Legacy threshold kept for backward-compat (interpreted as margin from 1.0)
     dedup_threshold: float = float(os.getenv("DEDUP_THRESHOLD", "0.12"))
+    # New explicit similarity floors (recommended)
+    dedup_same_domain_min_sim: float = float(os.getenv("DEDUP_SAME_DOMAIN_MIN_SIM", "0.94"))
+    dedup_global_min_sim: float = float(os.getenv("DEDUP_GLOBAL_MIN_SIM", "0.985"))
     rate_limit_feeds_per_host: int = int(os.getenv("RATE_LIMIT_FEEDS_PER_HOST", "2"))
     rate_limit_slack_rps: int = int(os.getenv("RATE_LIMIT_SLACK_RPS", "1"))
 

@@ -68,21 +68,23 @@ class QdrantStore:
         )
         return point_id
 
-    async def search(self, vector: list[float], top_k: int = 5) -> list[tuple[str, float]]:
+    async def search(self, vector: list[float], top_k: int = 5) -> list[tuple[str, float, dict[str, Any]]]:
         res = self.client.search(
             collection_name=self.collection,
             query_vector=vector,
             limit=top_k,
+            with_payload=True,
         )
-        out: list[tuple[str, float]] = []
+        out: list[tuple[str, float, dict[str, Any]]] = []
         for p in res:
             pid = str(p.id)
-            out.append((pid, float(p.score)))
+            payload = p.payload or {}
+            out.append((pid, float(p.score), payload))
         return out
 
     async def search_same_domain(
         self, vector: list[float], domain: str, top_k: int = 5
-    ) -> list[tuple[str, float]]:
+    ) -> list[tuple[str, float, dict[str, Any]]]:
         res = self.client.search(
             collection_name=self.collection,
             query_vector=vector,
@@ -90,5 +92,6 @@ class QdrantStore:
             query_filter=qm.Filter(
                 must=[qm.FieldCondition(key="domain", match=qm.MatchValue(value=domain))]
             ),
+            with_payload=True,
         )
-        return [(str(p.id), float(p.score)) for p in res]
+        return [(str(p.id), float(p.score), p.payload or {}) for p in res]
