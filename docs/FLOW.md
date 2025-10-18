@@ -20,13 +20,13 @@ flowchart TD
   F1 --> ENR[POST /enrich]
   ENR --> EMB[POST /embed (Ollama)]
   EMB --> DED[POST /dedup (Qdrant)]
-  DED -- is_duplicate=true --> LOG1[POST /log events_raw]
-  DED -- is_duplicate=false --> SLK[POST /notify/slack]
+  DED -->|is_duplicate=true| LOG1[POST /log events_raw]
+  DED -->|is_duplicate=false| SLK[POST /notify/slack]
   SLK --> LOG2[POST /log alerts]
   SLACK[Slack Button] --> HOOK[POST /hooks/slack]
   HOOK --> LOG3[POST /log alerts(update)]
-  DED -. vectors .-> QDR[(Qdrant)]
-  EMB -. http .-> OLL[(Ollama)]
+  DED -.->|vectors| QDR[(Qdrant)]
+  EMB -.->|http| OLL[(Ollama)]
   LOG1 --> BQ[(BigQuery)]
   LOG2 --> BQ
   LOG3 --> BQ
@@ -127,4 +127,3 @@ sequenceDiagram
 - Rich enrichment with SSRF-safe snapshots.
 - Automated KPIs pipeline and dashboards.
 - Rate limits via `aiolimiter` for feeds and Slack.
-

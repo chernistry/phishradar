@@ -140,7 +140,14 @@ from .models import (
 )  # noqa: E402
 from .embeddings import OllamaEmbeddings  # noqa: E402
 from .dedup import upsert_and_check  # noqa: E402
-from .slack import send_message, verify_signature, action_blocks, respond  # noqa: E402
+from .slack import (
+    send_message,
+    verify_signature,
+    action_blocks,
+    respond,
+    start_socket_mode,
+    stop_socket_mode,
+)  # noqa: E402
 from .logging_metrics import slack_messages_sent_total, slack_webhooks_total, slack_webhooks_invalid_total  # noqa: E402
 
 

@@ -28,9 +28,9 @@ Notes
 - Import `n8n/flows/phishradar.json` in the n8n UI (http://localhost:5678 → Import from file) and activate. The flow calls the API endpoints in sequence.
 
 ## BigQuery
-- Create dataset/tables: `bq --location=US mk -d pradar || true && bq query --use_legacy_sql=false < bq/sql/ddl.sql`
+- Create dataset/tables: `make bq_init` (or manually: `bq --location=US mk -d pradar || true && bq query --use_legacy_sql=false < bq/sql/ddl.sql`)
 - Buffer events via `/log` (written to `buffer/events.jsonl`).
-- Load to BQ: `python scripts/bq_load.py` (requires `bq` CLI and auth; set `GCP_PROJECT_ID` and optionally `BQ_DATASET`).
+- Load to BQ: `make bq_load` (or `python scripts/bq_load.py`) — requires `bq` CLI and auth; set `GCP_PROJECT_ID` and optionally `BQ_DATASET`.
 - KPI queries: `bq query --use_legacy_sql=false < bq/sql/kpis.sql`
 
 ## Common commands

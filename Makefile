@@ -26,33 +26,25 @@ smoke:
 	curl -fsS http://localhost:6333/metrics || echo "Qdrant metrics ok"
 
 qdrant-create:
-	python - <<'PY'
-import os, requests
-url = os.getenv('QDRANT_URL', 'http://localhost:6333') + '/collections/' + os.getenv('QDRANT_COLLECTION','phishradar_urls')
-vector_size = 1024
-try:
-    rsp = requests.put(url, json={
-        "vectors": {"size": vector_size, "distance": "Cosine"}
-    }, timeout=10)
-    print('Qdrant create status', rsp.status_code, rsp.text)
-except Exception as e:
-    print('Qdrant create error', e)
-PY
+	QURL=$${QDRANT_URL:-http://localhost:6333}; QCOL=$${QDRANT_COLLECTION:-phishradar_urls}; \
+	curl -sS -X PUT "$$QURL/collections/$$QCOL" \
+	  -H 'content-type: application/json' \
+	  -d '{"vectors":{"size":1024,"distance":"Cosine"}}' || true
 
 .PHONY: test
 test:
 	pytest -q
 
-.PHONY: seed:baseline
-seed\:baseline:
+.PHONY: seed_baseline
+seed_baseline:
 	python scripts/seed_baseline.py --limit 200 --api http://localhost:8000
 
-.PHONY: bq:init bq:load
+.PHONY: bq_init bq_load
 
-bq:init:
+bq_init:
 	@echo "Creating dataset and tables (requires gcloud/bq auth)..." && \
 	bq --location=US mk -d $${BQ_DATASET:-pradar} || true && \
 	bq query --use_legacy_sql=false < bq/sql/ddl.sql
 
-bq:load:
+bq_load:
 	python scripts/bq_load.py buffer/events.jsonl
