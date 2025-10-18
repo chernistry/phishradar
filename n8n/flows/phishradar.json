@@ -2,84 +2,94 @@
   "name": "PhishRadar Flow",
   "nodes": [
     {
-      "parameters": {"triggerTimes": {"item": [{"mode": "everyMinutes", "every": 10}]}},
+      "parameters": {"triggerTimes": {"item": [{"mode": "everyX", "unit": "minutes", "value": 10}]}},
       "id": "Cron",
       "name": "Cron",
       "type": "n8n-nodes-base.cron",
-      "typeVersion": 1
+      "typeVersion": 1,
+      "position": [-800, 0]
     },
     {
       "parameters": {"url": "http://api:8000/ingest/fetch", "method": "POST"},
       "id": "Fetch",
       "name": "Fetch URLs",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3
+      "typeVersion": 3,
+      "position": [-500, 0]
     },
     {
       "parameters": {"batchSize": 1},
       "id": "Split",
       "name": "Split In Batches",
       "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 1
+      "typeVersion": 1,
+      "position": [-200, 0]
     },
     {
       "parameters": {"url": "http://api:8000/enrich", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\"\n}"},
       "id": "Enrich",
       "name": "Enrich",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3
+      "typeVersion": 3,
+      "position": [100, 0]
     },
     {
       "parameters": {"url": "http://api:8000/embed", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\",\n  \"title\": \"={{$json.title}}\",\n  \"domain\": \"={{$json.domain}}\"\n}"},
       "id": "Embed",
       "name": "Embed",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3
+      "typeVersion": 3,
+      "position": [400, 0]
     },
     {
       "parameters": {"url": "http://api:8000/dedup", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\",\n  \"vector\": \"={{$json.vector}}\",\n  \"payload\": \"={{$json}}\"\n}"},
       "id": "Dedup",
       "name": "Dedup",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3
+      "typeVersion": 3,
+      "position": [700, 0]
     },
     {
       "parameters": {"conditions": {"boolean": [{"value1": "={{$json.is_duplicate}}"}]}},
       "id": "IF",
       "name": "IF Duplicate?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1
+      "typeVersion": 1,
+      "position": [1000, 0]
     },
     {
       "parameters": {"url": "http://api:8000/log", "method": "POST", "jsonParameters": true, "bodyParametersJson": "={{$json}}"},
       "id": "LogDup",
       "name": "Log Duplicate",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3
+      "typeVersion": 3,
+      "position": [1300, -200]
     },
     {
       "parameters": {"url": "http://api:8000/notify/slack", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\",\n  \"title\": \"={{$json.title}}\",\n  \"similarity\": \"={{$json.similarity}}\"\n}"},
       "id": "Notify",
       "name": "Slack Notify",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3
+      "typeVersion": 3,
+      "position": [1300, 200]
     },
     {
       "parameters": {"url": "http://api:8000/log", "method": "POST", "jsonParameters": true, "bodyParametersJson": "={{$json}}"},
       "id": "LogNew",
       "name": "Log New Alert",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3
+      "typeVersion": 3,
+      "position": [1600, 200]
     }
   ],
   "connections": {
-    "Cron": {"main": [[{"node": "Fetch", "type": "main", "index": 0}]]},
-    "Fetch": {"main": [[{"node": "Split", "type": "main", "index": 0}]]},
-    "Split": {"main": [[{"node": "Enrich", "type": "main", "index": 0}]]},
+    "Cron": {"main": [[{"node": "Fetch URLs", "type": "main", "index": 0}]]},
+    "Fetch URLs": {"main": [[{"node": "Split In Batches", "type": "main", "index": 0}]]},
+    "Split In Batches": {"main": [[{"node": "Enrich", "type": "main", "index": 0}]]},
     "Enrich": {"main": [[{"node": "Embed", "type": "main", "index": 0}]]},
     "Embed": {"main": [[{"node": "Dedup", "type": "main", "index": 0}]]},
-    "Dedup": {"main": [[{"node": "IF", "type": "main", "index": 0}]]},
-    "IF": {"main": [[{"node": "LogDup", "type": "main", "index": 0}], [{"node": "Notify", "type": "main", "index": 0}]]},
-    "Notify": {"main": [[{"node": "LogNew", "type": "main", "index": 0}]]}
+    "Dedup": {"main": [[{"node": "IF Duplicate?", "type": "main", "index": 0}]]},
+    "IF Duplicate?": {"main": [[{"node": "Log Duplicate", "type": "main", "index": 0}], [{"node": "Slack Notify", "type": "main", "index": 0}]]},
+    "Slack Notify": {"main": [[{"node": "Log New Alert", "type": "main", "index": 0}]]}
   }
 }

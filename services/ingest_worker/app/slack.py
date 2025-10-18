@@ -78,15 +78,18 @@ def action_blocks(url: str, title: str, similarity: float) -> list[dict[str, Any
         },
         {
             "type": "actions",
+            "block_id": "phishradar_actions",
             "elements": [
                 {
                     "type": "button",
+                    "action_id": "phishradar_approve",
                     "text": {"type": "plain_text", "text": "Approve"},
                     "style": "primary",
                     "value": json.dumps({"action": "approve", "url": url}),
                 },
                 {
                     "type": "button",
+                    "action_id": "phishradar_reject",
                     "text": {"type": "plain_text", "text": "Reject"},
                     "style": "danger",
                     "value": json.dumps({"action": "reject", "url": url}),
@@ -146,6 +149,11 @@ async def start_socket_mode() -> None:
             pass
 
     await client.connect()
+    try:
+        # Small log to indicate connection established
+        await web.api_call("auth.test")
+    except Exception:
+        pass
     _socket_mode_client = client
 
 

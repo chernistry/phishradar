@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from typing import Any
+import uuid
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
@@ -10,7 +11,8 @@ from .config import settings
 
 
 def id_key(url: str) -> str:
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+    # Qdrant supports integer or UUID point ids. Use deterministic UUIDv5 from URL.
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, url))
 
 
 class QdrantStore:

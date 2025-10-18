@@ -31,7 +31,8 @@ class OllamaEmbeddings:
     async def embed_async_single(self, text: str) -> tuple[list[float], int, str]:
         start = time.perf_counter()
         try:
-            data = {"model": self.model, "input": text}
+            # Ollama embeddings API expects "prompt" (not "input").
+            data = {"model": self.model, "prompt": text}
             out = await self._post("/api/embeddings", data)
             vector = out.get("embedding") or (out.get("data", [{}])[0] or {}).get("embedding")
             if not isinstance(vector, list):
