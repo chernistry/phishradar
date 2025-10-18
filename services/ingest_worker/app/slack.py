@@ -95,3 +95,66 @@ def action_blocks(url: str, title: str, similarity: float) -> list[dict[str, Any
         },
     ]
 
+
+# --- Optional: Socket Mode support (no public URL needed) ---
+_socket_mode_client = None  # type: ignore[var-annotated]
+
+
+async def start_socket_mode() -> None:
+    """Start Slack Socket Mode listener if app-level token is present.
+
+    Requires:
+    - settings.slack_app_level_token (xapp-...)
+    - settings.slack_bot_token (xoxb-...)
+    """
+    global _socket_mode_client
+    if not settings.slack_app_level_token or not settings.slack_bot_token:
+        return
+    try:
+        from slack_sdk.socket_mode.aiohttp import SocketModeClient
+        from slack_sdk.socket_mode.request import SocketModeRequest
+        from slack_sdk.socket_mode.response import SocketModeResponse
+        from slack_sdk.web.async_client import AsyncWebClient
+    except Exception:
+        return
+
+    web = AsyncWebClient(token=settings.slack_bot_token)
+    client = SocketModeClient(app_token=settings.slack_app_level_token, web_client=web)
+
+    @client.socket_mode_request_listeners.append  # type: ignore[attr-defined]
+    async def handle(req: "SocketModeRequest"):  # noqa: F821
+        try:
+            # Ack ASAP
+            await client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+        except Exception:
+            pass
+        try:
+            if req.type == "interactive":
+                payload = req.payload  # interactive payload dict
+                action = (payload.get("actions") or [{}])[0]
+                val = action.get("value")
+                parsed = json.loads(val) if val else {}
+                resp_url = payload.get("response_url")
+                user = (payload.get("user") or {}).get("username") or (payload.get("user") or {}).get("id")
+                # Optional quick ack to response_url
+                if resp_url:
+                    try:
+                        await respond(resp_url, f"Thanks <@{user}>. Action received.")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    await client.connect()
+    _socket_mode_client = client
+
+
+async def stop_socket_mode() -> None:
+    global _socket_mode_client
+    client = _socket_mode_client
+    if client is not None:
+        try:
+            await client.close()  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        _socket_mode_client = None

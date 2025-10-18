@@ -29,6 +29,7 @@ class Settings:
     slack_signing_secret: str = os.getenv("SLACK_SIGNING_SECRET", "")
     slack_channel_id: str = os.getenv("SLACK_CHANNEL_ID", "")
     slack_approvers_group_id: str | None = os.getenv("SLACK_APPROVERS_GROUP_ID")
+    slack_app_level_token: str = os.getenv("SLACK_APP_LEVEL_TOKEN", "")
 
     # BigQuery
     gcp_project_id: str = os.getenv("GCP_PROJECT_ID", "")

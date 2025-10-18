@@ -57,11 +57,20 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logging.getLogger(__name__).warning(f"Qdrant ensure failed: {qe}")
     except Exception as e:
         logging.getLogger(__name__).warning(f"Embedding probe failed: {e}")
+    # Start Slack Socket Mode if configured (no public URL needed)
+    try:
+        await start_socket_mode()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Socket Mode start failed: {e}")
     # Mark ready after startup tasks
     set_ready()
     yield
     # On shutdown mark unready
     set_unready()
+    try:
+        await stop_socket_mode()
+    except Exception:
+        pass
 
 
 app = FastAPI(title="PhishRadar Ingest Worker", version="0.1.0", lifespan=lifespan)
