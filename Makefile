@@ -43,6 +43,10 @@ PY
 test:
 	pytest -q
 
+.PHONY: seed:baseline
+seed\:baseline:
+	python scripts/seed_baseline.py --limit 200 --api http://localhost:8000
+
 .PHONY: bq:init bq:load
 
 bq:init:
