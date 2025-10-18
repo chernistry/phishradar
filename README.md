@@ -1,6 +1,17 @@
 # PhishRadar — Infra Bootstrap
 
-This repo spins up n8n + FastAPI worker + Qdrant + Redis (and optionally Ollama) for phishing feed ingestion, embedding deduplication, Slack HITL alerts, and BigQuery KPIs. See dev/prep/project.md for detailed architecture and acceptance.
+This repo spins up n8n + FastAPI worker + Qdrant + Redis (and optionally Ollama) for phishing feed ingestion, embedding deduplication, Slack HITL alerts, and BigQuery KPIs.
+
+
+   
+## Digest (EN)
+- What it is: A "radar" for phishing links. Converts URL/title/domain into vectors and searches for similar vectors in Qdrant (cosine similarity). New items go to Slack, duplicates go to logs.
+- For whom: SecOps/SOC/IT security. Working interface - cards in Slack with Approve/Reject buttons.
+- Source of links: Public feeds (via seeder), internal sources (via n8n), manual submissions (/ingest/submit).
+- Flow process: fetch → enrich → embed (Ollama) → dedup (Qdrant) → notify/log → Slack interaction.
+- Why this approach: Embeddings are resilient to URL variations; less noise, faster detection of "new campaigns".
+- What to check: `/healthz`, `/metrics`, buffer `buffer/*.jsonl`, diagram `docs/FLOW.md`.
+
 
 Quick start
 1. cp .env.example .env
@@ -26,6 +37,7 @@ Notes
 
 ## n8n Flow
 - Import `n8n/flows/phishradar.json` in the n8n UI (http://localhost:5678 → Import from file) and activate. The flow calls the API endpoints in sequence.
+- For a deeper technical flow diagram, see `docs/FLOW.md` (in this repo).
 
 ## BigQuery
 - Create dataset/tables: `make bq_init` (or manually: `bq --location=US mk -d pradar || true && bq query --use_legacy_sql=false < bq/sql/ddl.sql`)
