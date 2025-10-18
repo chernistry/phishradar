@@ -135,6 +135,11 @@ async def embed(payload: EmbedIn = Body(...)) -> EmbedOut:
     vector, ms, model = await emb.embed_async_single(
         f"{payload.url} | {payload.title} | {payload.domain}"
     )
+    # Emit local receipt for embeddings (tokens/cost = 0 for local model)
+    try:
+        _append_jsonl("receipts.jsonl", {"model": model, "tokens": 0, "ms": ms, "cost": 0.0})
+    except Exception:
+        pass
     return EmbedOut(vector=vector, model=model, ms=ms)
 
 
@@ -174,20 +179,31 @@ async def enrich(body: EnrichIn) -> EnrichOut:
 
 @app.post("/log")
 async def log_event(payload: dict = Body(...)) -> dict[str, bool]:  # type: ignore[type-arg]
-    # Append to local buffer JSONL (will be consumed in Ticket 7)
-    import os
-    import json as _json
+    # Buffer JSONL in configured directory; add default UTC timestamp if missing
+    from datetime import datetime, timezone
 
-    buf_dir = os.path.join(os.getcwd(), "buffer")
-    os.makedirs(buf_dir, exist_ok=True)
-    path = os.path.join(buf_dir, "events.jsonl")
+    if "ts" not in payload:
+        payload["ts"] = datetime.now(timezone.utc).isoformat()
     try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(_json.dumps(payload, ensure_ascii=False) + "\n")
+        _append_jsonl("events.jsonl", payload)
     except Exception:
         # best-effort; surface ok anyway to not break flow
         pass
     return {"ok": True}
+
+
+# Buffer helper
+import os as _os
+import json as _json
+
+BUFFER_DIR = _os.getenv("BUFFER_DIR", "/app/buffer")
+_os.makedirs(BUFFER_DIR, exist_ok=True)
+
+
+def _append_jsonl(filename: str, obj: dict) -> None:  # type: ignore[type-arg]
+    path = _os.path.join(BUFFER_DIR, filename)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(obj, ensure_ascii=False) + "\n")
 
 
 def main() -> None:

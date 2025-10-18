@@ -39,3 +39,12 @@ except Exception as e:
     print('Qdrant create error', e)
 PY
 
+.PHONY: bq:init bq:load
+
+bq:init:
+	@echo "Creating dataset and tables (requires gcloud/bq auth)..." && \
+	bq --location=US mk -d $${BQ_DATASET:-pradar} || true && \
+	bq query --use_legacy_sql=false < bq/sql/ddl.sql
+
+bq:load:
+	python scripts/bq_load.py buffer/events.jsonl
