@@ -1,0 +1,2 @@
+"""PhishRadar ingest worker package."""
+

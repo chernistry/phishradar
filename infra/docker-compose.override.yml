@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  api:
+    environment:
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./services/ingest_worker/app:/app/app
+      - ./buffer:/app/buffer
+  qdrant:
+    environment:
+      - QDRANT__STORAGE__OPTIMIZERS__MAX_SEGMENTS=2
+  n8n:
+    environment:
+      - N8N_LOG_LEVEL=debug
+
