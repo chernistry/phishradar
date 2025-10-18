@@ -24,6 +24,9 @@ Notes
 - curl :8000/metrics
 - curl :6333/metrics (qdrant)
 
+## n8n Flow
+- Import `n8n/flows/phishradar.json` in the n8n UI (http://localhost:5678 → Import from file) and activate. The flow calls the API endpoints in sequence.
+
 ## Common commands
 - make build — rebuild containers
 - make logs — tail logs
@@ -36,4 +39,3 @@ Notes
    - Pre-pull model: `ollama pull embeddinggemma:latest`. First request warms the model.
 3) Port conflicts
    - Adjust ports in infra/docker-compose.yml; ensure OS firewall allows local ports.
-

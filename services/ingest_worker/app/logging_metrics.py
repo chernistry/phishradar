@@ -39,6 +39,16 @@ dedup_duplicates_total = Counter(
     "phishradar_dedup_duplicates_total", "Total duplicates detected", registry=registry
 )
 
+slack_messages_sent_total = Counter(
+    "phishradar_slack_messages_sent_total", "Slack messages sent", registry=registry
+)
+slack_webhooks_total = Counter(
+    "phishradar_slack_webhooks_total", "Slack webhooks received", registry=registry
+)
+slack_webhooks_invalid_total = Counter(
+    "phishradar_slack_webhooks_invalid_total", "Slack webhooks rejected (invalid)", registry=registry
+)
+
 
 # Correlation id context
 correlation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
