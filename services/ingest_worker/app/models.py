@@ -32,6 +32,9 @@ class EmbedOut(BaseModel):
     vector: list[float]
     model: str
     ms: int
+    url: AnyHttpUrl
+    title: str
+    domain: str
 
 
 class DedupIn(BaseModel):
@@ -50,7 +53,7 @@ class SlackNotifyIn(BaseModel):
     url: AnyHttpUrl
     title: str
     similarity: float
-    evidence: str | None
+    evidence: str | None = None
 
 
 class Receipt(BaseModel):

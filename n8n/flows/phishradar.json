@@ -2,94 +2,306 @@
   "name": "PhishRadar Flow",
   "nodes": [
     {
-      "parameters": {"triggerTimes": {"item": [{"mode": "everyX", "unit": "minutes", "value": 10}]}},
-      "id": "Cron",
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 10,
+              "unit": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "acf03938-0154-4f41-9d7e-901e27bcb257",
       "name": "Cron",
       "type": "n8n-nodes-base.cron",
       "typeVersion": 1,
-      "position": [-800, 0]
+      "position": [
+        -2400,
+        144
+      ]
     },
     {
-      "parameters": {"url": "http://api:8000/ingest/fetch", "method": "POST"},
-      "id": "Fetch",
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/ingest/fetch",
+        "options": {}
+      },
+      "id": "0029f057-c3fd-48bd-8595-f7fd76071e90",
       "name": "Fetch URLs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [-500, 0]
+      "position": [
+        -2112,
+        144
+      ]
     },
     {
-      "parameters": {"batchSize": 1},
-      "id": "Split",
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "e11bb1b8-8e20-4c20-a923-3c187bfc75c0",
       "name": "Split In Batches",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 1,
-      "position": [-200, 0]
+      "position": [
+        -1808,
+        144
+      ]
     },
     {
-      "parameters": {"url": "http://api:8000/enrich", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\"\n}"},
-      "id": "Enrich",
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/enrich",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9b346b7e-401e-4cf6-bbde-a71291598bb9",
       "name": "Enrich",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [100, 0]
+      "position": [
+        -1504,
+        144
+      ]
     },
     {
-      "parameters": {"url": "http://api:8000/embed", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\",\n  \"title\": \"={{$json.title}}\",\n  \"domain\": \"={{$json.domain}}\"\n}"},
-      "id": "Embed",
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/embed",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{$json.url}}"
+            },
+            {
+              "name": "title",
+              "value": "={{$json.title}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "113b7c5e-5053-42dc-8d76-07fd9f590bf3",
       "name": "Embed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [400, 0]
+      "position": [
+        -1200,
+        144
+      ]
     },
     {
-      "parameters": {"url": "http://api:8000/dedup", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\",\n  \"vector\": \"={{$json.vector}}\",\n  \"payload\": \"={{$json}}\"\n}"},
-      "id": "Dedup",
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/dedup",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url, vector: $json.vector, payload: { title: $json.title } }) }}",
+        "options": {}
+      },
+      "id": "efabb692-872e-43df-8cba-b56a5abe712b",
       "name": "Dedup",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [700, 0]
+      "position": [
+        -912,
+        144
+      ]
     },
     {
-      "parameters": {"conditions": {"boolean": [{"value1": "={{$json.is_duplicate}}"}]}},
-      "id": "IF",
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.is_duplicate}}",
+              "operation": "notEqual"
+            }
+          ]
+        }
+      },
+      "id": "6eaf01d9-b05e-4ee0-9eb0-b47d57bc02c6",
       "name": "IF Duplicate?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1000, 0]
+      "position": [
+        -608,
+        144
+      ]
     },
     {
-      "parameters": {"url": "http://api:8000/log", "method": "POST", "jsonParameters": true, "bodyParametersJson": "={{$json}}"},
-      "id": "LogDup",
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "ead58aea-ff71-4a7b-83f2-7b92ed7f0a0b",
       "name": "Log Duplicate",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1300, -200]
+      "position": [
+        -304,
+        -64
+      ]
     },
     {
-      "parameters": {"url": "http://api:8000/notify/slack", "method": "POST", "jsonParameters": true, "bodyParametersJson": "{\n  \"url\": \"={{$json.url}}\",\n  \"title\": \"={{$json.title}}\",\n  \"similarity\": \"={{$json.similarity}}\"\n}"},
-      "id": "Notify",
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/notify/slack",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $node[\"Embed\"].json.url, title: $node[\"Embed\"].json.title, similarity: $json.similarity }) }}",
+        "options": {}
+      },
+      "id": "b370d33f-7888-4cab-a150-09a89e445c2e",
       "name": "Slack Notify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1300, 200]
+      "position": [
+        -304,
+        336
+      ]
     },
     {
-      "parameters": {"url": "http://api:8000/log", "method": "POST", "jsonParameters": true, "bodyParametersJson": "={{$json}}"},
-      "id": "LogNew",
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "a957db04-5a26-49d9-a9b2-f0b4c5ef1518",
       "name": "Log New Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1600, 200]
+      "position": [
+        0,
+        336
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
-    "Cron": {"main": [[{"node": "Fetch URLs", "type": "main", "index": 0}]]},
-    "Fetch URLs": {"main": [[{"node": "Split In Batches", "type": "main", "index": 0}]]},
-    "Split In Batches": {"main": [[{"node": "Enrich", "type": "main", "index": 0}]]},
-    "Enrich": {"main": [[{"node": "Embed", "type": "main", "index": 0}]]},
-    "Embed": {"main": [[{"node": "Dedup", "type": "main", "index": 0}]]},
-    "Dedup": {"main": [[{"node": "IF Duplicate?", "type": "main", "index": 0}]]},
-    "IF Duplicate?": {"main": [[{"node": "Log Duplicate", "type": "main", "index": 0}], [{"node": "Slack Notify", "type": "main", "index": 0}]]},
-    "Slack Notify": {"main": [[{"node": "Log New Alert", "type": "main", "index": 0}]]}
-  }
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Fetch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch URLs": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich": {
+      "main": [
+        [
+          {
+            "node": "Embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed": {
+      "main": [
+        [
+          {
+            "node": "Dedup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedup": {
+      "main": [
+        [
+          {
+            "node": "IF Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Log Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Notify": {
+      "main": [
+        [
+          {
+            "node": "Log New Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c47bdbb9-3316-4688-9d8c-56b5020d995d",
+  "meta": {
+    "instanceId": "98d158e8b7d5a2c56d6bc79a227c823ffff08f40b969920deeb17cfd2a7a27d6"
+  },
+  "id": "CvZ9bkZfwKR9iJcK",
+  "tags": []
 }

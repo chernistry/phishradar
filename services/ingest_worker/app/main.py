@@ -6,7 +6,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, Any
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -149,76 +149,260 @@ from .slack import (
     stop_socket_mode,
 )  # noqa: E402
 from .logging_metrics import slack_messages_sent_total, slack_webhooks_total, slack_webhooks_invalid_total  # noqa: E402
+from .domain import canonical_domain  # noqa: E402
+from .paths import BUFFER_DIR  # noqa: E402
+from .ingest_queue import IngestQueue  # noqa: E402
 
 
 @app.post("/embed", response_model=EmbedOut)
-async def embed(payload: EmbedIn = Body(...)) -> EmbedOut:
+async def embed(request: Request) -> EmbedOut:
+    """Return embedding for the given URL/title/domain.
+
+    Primary contract: JSON body matching EmbedIn. For resilience with tools like n8n
+    misconfigured to not send JSON, we also accept form fields or query params.
+    """
+    # Extract fields
+    url_val: str | None = None
+    title_val: str | None = None
+    domain_val: str | None = None
+    try:
+        data = await request.json()
+    except Exception:
+        data = None
+    if isinstance(data, dict) and data:
+        url_val = str(data.get("url") or "") or None
+        title_val = data.get("title") or None
+        domain_val = data.get("domain") or None
+    else:
+        # Try form or query
+        try:
+            form = await request.form()
+            url_val = url_val or form.get("url")
+            title_val = title_val or form.get("title")
+            domain_val = domain_val or form.get("domain")
+        except Exception:
+            pass
+        if not url_val:
+            url_val = request.query_params.get("url")
+        if not title_val:
+            title_val = request.query_params.get("title")
+        if not domain_val:
+            domain_val = request.query_params.get("domain")
+        if not url_val:
+            raise HTTPException(status_code=422, detail="url required")
+        if not title_val:
+            # fallback title = domain
+            title_val = canonical_domain(str(url_val))
+    dom = canonical_domain(str(url_val))
     emb = OllamaEmbeddings()
-    vector, ms, model = await emb.embed_async_single(
-        f"{payload.url} | {payload.title} | {payload.domain}"
-    )
-    # Emit local receipt for embeddings (tokens/cost = 0 for local model)
+    vector, ms, model = await emb.embed_async_single(f"{url_val} | {title_val} | {dom}")
     try:
         _append_jsonl("receipts.jsonl", {"model": model, "tokens": 0, "ms": ms, "cost": 0.0})
     except Exception:
         pass
-    return EmbedOut(vector=vector, model=model, ms=ms)
+    return EmbedOut(vector=vector, model=model, ms=ms, url=str(url_val), title=str(title_val or dom), domain=dom)
 
 
 @app.post("/dedup", response_model=DedupOut)
-async def dedup(body: DedupIn) -> DedupOut:
+async def dedup(request: Request) -> DedupOut:
     dedup_requests_total.inc()
-    if not body.vector:
-        raise HTTPException(status_code=400, detail="empty vector")
+    # Accept JSON body (preferred) or form-encoded fields; tolerate stringified vector/payload
+    url_val: str | None = None
+    vector_val: list[float] | None = None
+    payload_val: dict | None = None  # type: ignore[type-arg]
+
+    # Try JSON body first
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if isinstance(body, dict) and body:
+        url_val = str(body.get("url") or "") or None
+        vector_val = body.get("vector")
+        payload_val = body.get("payload") if isinstance(body.get("payload"), dict) else None
+    else:
+        # Try to parse JSON or form
+        raw_handled = False
+        try:
+            data = await request.json()
+            raw_handled = True
+        except Exception:
+            data = None
+        if isinstance(data, dict) and data:
+            url_val = str(data.get("url") or "") or None
+            vector_val = data.get("vector")  # may be list or str
+            payload_val = data.get("payload") if isinstance(data.get("payload"), dict) else None
+            if isinstance(vector_val, str):
+                try:
+                    import json as _json
+
+                    vector_val = _json.loads(vector_val)
+                except Exception:
+                    vector_val = None
+        if url_val is None or vector_val is None:
+            # Try form fields
+            try:
+                form = await request.form()
+                url_val = url_val or form.get("url")
+                v = form.get("vector")
+                if v and isinstance(v, str):
+                    try:
+                        import json as _json
+
+                        vector_val = _json.loads(v)
+                    except Exception:
+                        vector_val = None
+                if payload_val is None:
+                    p = form.get("payload")
+                    if p and isinstance(p, str):
+                        try:
+                            import json as _json
+
+                            payload_val = _json.loads(p)
+                        except Exception:
+                            payload_val = None
+            except Exception:
+                if not raw_handled:
+                    # Last resort: read raw and attempt JSON
+                    try:
+                        raw = await request.body()
+                        import json as _json
+
+                        d2 = _json.loads(raw.decode("utf-8"))
+                        url_val = url_val or d2.get("url")
+                        vector_val = vector_val or d2.get("vector")
+                        payload_val = payload_val or d2.get("payload")
+                    except Exception:
+                        pass
+
+    if not url_val:
+        raise HTTPException(status_code=422, detail="url required")
+    if not isinstance(vector_val, list) or not vector_val:
+        raise HTTPException(status_code=400, detail="empty or invalid vector")
+
     # Validate dimension if known
     embed_dim = getattr(app.state, "embed_dim", None)  # type: ignore[attr-defined]
-    if embed_dim is not None and len(body.vector) != int(embed_dim):
+    if embed_dim is not None and len(vector_val) != int(embed_dim):
         raise HTTPException(status_code=400, detail="vector dimension mismatch")
-    dup, sim, qid = await upsert_and_check(str(body.url), body.vector, body.payload)
+
+    payload_val = payload_val or {}
+    dup, sim, qid = await upsert_and_check(str(url_val), vector_val, payload_val)
     if dup:
         dedup_duplicates_total.inc()
     return DedupOut(is_duplicate=dup, similarity=sim, qdrant_id=qid)
 
 
 @app.post("/ingest/fetch")
-async def ingest_fetch() -> list[UrlItem]:
-    # Minimal stub to allow n8n flow execution; future ticket can fetch real feeds
-    now_iso = "1970-01-01T00:00:00Z"
-    return [
-        UrlItem(url="https://example.com/phish", domain="example.com", ts=now_iso),
-    ]
+async def ingest_fetch(request: Request) -> list[UrlItem]:
+    # Pop up to `limit` items from the local file-backed queue. Returns [] if empty.
+    try:
+        limit_str = request.query_params.get("limit")
+        limit = max(1, min(50, int(limit_str))) if limit_str else 10
+    except Exception:
+        limit = 10
+    q = IngestQueue()
+    rows = await q.fetch(limit=limit)
+    return [UrlItem(url=r["url"], domain=r["domain"], ts=r["ts"]) for r in rows]
+
+
+@app.post("/ingest/submit")
+async def ingest_submit(body: dict = Body(...)) -> dict[str, bool]:  # type: ignore[type-arg]
+    # Accepts: {url, title?}. Derives domain and ts, enqueues for n8n to process via /ingest/fetch
+    from datetime import datetime, timezone
+
+    url = str(body.get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=422, detail="url required")
+    dom = canonical_domain(url)
+    row = {
+        "url": url,
+        "domain": dom,
+        "title": body.get("title") or dom,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    q = IngestQueue()
+    await q.push(row)
+    return {"ok": True}
 
 
 @app.post("/enrich", response_model=EnrichOut)
-async def enrich(body: EnrichIn) -> EnrichOut:
-    # Minimal safe enrichment without external fetch
+async def enrich(request: Request, body: EnrichIn | None = Body(None)) -> EnrichOut:
+    """Enrich URL with minimal metadata.
+
+    Accepts JSON body {"url": ...}. If body is missing (e.g., n8n misconfigured),
+    falls back to parsing form-encoded or query param `url`.
+    """
     from urllib.parse import urlparse
 
-    parsed = urlparse(str(body.url))
+    url_val: str | None = None
+    if body and getattr(body, "url", None):
+        url_val = str(body.url)
+    else:
+        # Try form
+        try:
+            form = await request.form()
+            url_val = form.get("url") or url_val
+        except Exception:
+            pass
+        # Try query string
+        if not url_val:
+            url_val = request.query_params.get("url")
+        if not url_val:
+            raise HTTPException(status_code=422, detail="url required")
+
+    parsed = urlparse(str(url_val))
     title = parsed.netloc or ""
-    return EnrichOut(url=body.url, title=title, snapshot_hash=None)
+    return EnrichOut(url=str(url_val), title=title, snapshot_hash=None)
 
 
 @app.post("/log")
-async def log_event(payload: dict = Body(...)) -> dict[str, bool]:  # type: ignore[type-arg]
-    # Buffer JSONL in configured directory; add default UTC timestamp if missing
+async def log_event(request: Request, payload: Any = Body(None)) -> dict[str, bool]:  # type: ignore[type-arg]
+    """Best-effort logging endpoint.
+
+    Accepts JSON body (preferred). If missing, tolerates form-encoded (payload=JSON)
+    or raw query params; appends `ts` if absent and writes a JSONL line.
+    """
     from datetime import datetime, timezone
 
-    if "ts" not in payload:
-        payload["ts"] = datetime.now(timezone.utc).isoformat()
+    data: dict[str, Any] | None = None
+    if isinstance(payload, dict):
+        data = payload
+    else:
+        # Try JSON
+        try:
+            j = await request.json()
+            if isinstance(j, dict):
+                data = j
+        except Exception:
+            pass
+        # Try form (payload field containing JSON)
+        if data is None:
+            try:
+                form = await request.form()
+                p = form.get("payload")
+                if isinstance(p, str):
+                    import json as _json
+
+                    data = _json.loads(p)
+            except Exception:
+                pass
+        # Fallback to query
+        if data is None:
+            data = dict(request.query_params)
+
+    if "ts" not in data:
+        data["ts"] = datetime.now(timezone.utc).isoformat()
     try:
-        _append_jsonl("events.jsonl", payload)
+        _append_jsonl("events.jsonl", data)
     except Exception:
         # best-effort; surface ok anyway to not break flow
         pass
     return {"ok": True}
 
 
-# Buffer helper
 import os as _os
 import json as _json
 
-BUFFER_DIR = _os.getenv("BUFFER_DIR", "/app/buffer")
 _os.makedirs(BUFFER_DIR, exist_ok=True)
 
 

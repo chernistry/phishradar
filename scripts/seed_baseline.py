@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import time
 from dataclasses import dataclass
+import os
 from typing import Iterable
 from urllib.parse import urlparse
 
@@ -144,6 +145,8 @@ async def main() -> None:
     ap.add_argument("--api", default="http://localhost:8000", help="API base URL")
     ap.add_argument("--concurrency", type=int, default=10, help="Concurrent requests")
     ap.add_argument("--file", default="scripts/seeds/baseline.txt", help="Local fallback file with URLs (one per line)")
+    ap.add_argument("--qurl", default=os.getenv("QDRANT_URL", "http://localhost:6333"), help="Qdrant URL")
+    ap.add_argument("--collection", default=os.getenv("QDRANT_COLLECTION", "phishradar_urls"), help="Qdrant collection name")
     ns = ap.parse_args()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -171,6 +174,28 @@ async def main() -> None:
                     urls.append(u)
         except Exception:
             pass
+
+    # Ensure Qdrant collection exists with proper dimension by probing /embed once
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            probe = await client.post(f"{ns.api}/embed", json={"url": "https://example.com/probe", "title": "probe", "domain": "example.com"})
+            probe.raise_for_status()
+            dim = int(len(probe.json().get("vector") or []))
+        except Exception:
+            dim = 0
+        if dim > 0:
+            # Create collection if missing or mismatched
+            try:
+                r = await client.get(f"{ns.qurl}/collections/{ns.collection}")
+                if r.status_code != 200 or int((r.json().get("result", {}).get("config", {}).get("params", {}).get("vectors", {}).get("size", 0))) != dim:
+                    await client.put(
+                        f"{ns.qurl}/collections/{ns.collection}",
+                        headers={"content-type": "application/json"},
+                        json={"vectors": {"size": dim, "distance": "Cosine"}},
+                    )
+            except Exception:
+                # Best-effort; continue
+                pass
 
     print(f"Collected {len(urls)} URLs; seeding via {ns.api}")
     stats = await seed(urls, ns.api, ns.concurrency)
