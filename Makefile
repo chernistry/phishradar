@@ -39,6 +39,10 @@ except Exception as e:
     print('Qdrant create error', e)
 PY
 
+.PHONY: test
+test:
+	pytest -q
+
 .PHONY: bq:init bq:load
 
 bq:init:

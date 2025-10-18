@@ -24,6 +24,8 @@ from .logging_metrics import (
     setup_logging,
     dedup_requests_total,
     dedup_duplicates_total,
+    set_ready,
+    set_unready,
 )
 
 
@@ -55,7 +57,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logging.getLogger(__name__).warning(f"Qdrant ensure failed: {qe}")
     except Exception as e:
         logging.getLogger(__name__).warning(f"Embedding probe failed: {e}")
+    # Mark ready after startup tasks
+    set_ready()
     yield
+    # On shutdown mark unready
+    set_unready()
 
 
 app = FastAPI(title="PhishRadar Ingest Worker", version="0.1.0", lifespan=lifespan)

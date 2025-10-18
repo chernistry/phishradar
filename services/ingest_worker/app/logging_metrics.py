@@ -49,6 +49,21 @@ slack_webhooks_invalid_total = Counter(
     "phishradar_slack_webhooks_invalid_total", "Slack webhooks rejected (invalid)", registry=registry
 )
 
+# Readiness gauge for health reporting
+from prometheus_client import Gauge  # noqa: E402
+
+readiness_gauge = Gauge(
+    "phishradar_readiness", "Readiness status (1=ready, 0=not ready)", registry=registry
+)
+
+
+def set_ready() -> None:
+    readiness_gauge.set(1)
+
+
+def set_unready() -> None:
+    readiness_gauge.set(0)
+
 
 # Correlation id context
 correlation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(

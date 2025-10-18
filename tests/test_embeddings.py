@@ -1,6 +1,8 @@
 import asyncio
+import os
 
 import httpx
+import pytest
 
 
 async def _probe_dim() -> int:
@@ -14,7 +16,7 @@ async def _probe_dim() -> int:
         return len(data["vector"])
 
 
+@pytest.mark.skipif(os.getenv("PHISHRADAR_EMBED_TESTS") != "1", reason="Embed integration test disabled by default")
 def test_embedding_length_and_latency():
     dim = asyncio.run(_probe_dim())
     assert dim > 100
-
