@@ -25,8 +25,8 @@ flowchart TD
   SLK --> LOG2[POST /log alerts]
   SLACK[Slack Button] --> HOOK[POST /hooks/slack]
   HOOK --> LOG3[POST /log alerts(update)]
-  DED -.-> QDR[(Qdrant)]
-  EMB -.-> OLL[(Ollama)]
+  DED --> QDR[(Qdrant)]
+  EMB --> OLL[(Ollama)]
   LOG1 --> BQ[(BigQuery)]
   LOG2 --> BQ
   LOG3 --> BQ

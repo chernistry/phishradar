@@ -14,6 +14,8 @@ import httpx
 OPENPHISH_FEED = "https://openphish.com/feed.txt"
 # Some PhishTank endpoints require API key/path; allow override via CLI/ENV
 PHISHTANK_FEED_DEFAULT = "https://data.phishtank.com/data/online-valid.json"
+# Community API (no key): returns JSON objects with a `url` field
+SINKINGYACHTS_FEED = "https://phish.sinking.yachts/v2/urls"
 
 
 @dataclass
@@ -34,7 +36,7 @@ def _domain(url: str) -> str:
 
 async def fetch_openphish(limit: int, client: httpx.AsyncClient) -> list[str]:
     try:
-        r = await client.get(OPENPHISH_FEED)
+        r = await client.get(OPENPHISH_FEED, headers={"User-Agent": "curl/8 seed"})
         r.raise_for_status()
         urls = []
         for line in r.text.splitlines():
@@ -53,7 +55,28 @@ async def fetch_phishtank(limit: int, client: httpx.AsyncClient, url: str | None
     if not url:
         return []
     try:
-        r = await client.get(url)
+        r = await client.get(url, headers={"User-Agent": "curl/8 seed"})
+        r.raise_for_status()
+        data = r.json()
+        out: list[str] = []
+        for it in data:
+            u = it.get("url")
+            if u:
+                out.append(u)
+                if len(out) >= limit:
+                    break
+        return out
+    except Exception:
+        return []
+
+
+async def fetch_sinkingyachts(limit: int, client: httpx.AsyncClient) -> list[str]:
+    """Fetch recent phishing URLs from SinkingYachts community API.
+    API is unauthenticated; apply per_page limit and simple pagination guard.
+    """
+    try:
+        # Try to request up to `limit` in one call if supported
+        r = await client.get(SINKINGYACHTS_FEED, params={"per_page": min(limit, 500)}, headers={"User-Agent": "curl/8 seed"})
         r.raise_for_status()
         data = r.json()
         out: list[str] = []
@@ -120,19 +143,34 @@ async def main() -> None:
     )
     ap.add_argument("--api", default="http://localhost:8000", help="API base URL")
     ap.add_argument("--concurrency", type=int, default=10, help="Concurrent requests")
+    ap.add_argument("--file", default="scripts/seeds/baseline.txt", help="Local fallback file with URLs (one per line)")
     ns = ap.parse_args()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         src1 = await fetch_openphish(ns.limit, client)
         src2 = await fetch_phishtank(ns.limit, client, ns.phishtank or PHISHTANK_FEED_DEFAULT)
+        src3 = await fetch_sinkingyachts(ns.limit, client)
     # De-duplicate and basic sanity
     urls = []
     seen: set[str] = set()
-    for u in src1 + src2:
+    for u in src1 + src2 + src3:
         if not u or u in seen:
             continue
         seen.add(u)
         urls.append(u)
+
+    # Fallback to local file if nothing fetched
+    if not urls:
+        try:
+            with open(ns.file, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    u = line.strip()
+                    if not u or u in seen:
+                        continue
+                    seen.add(u)
+                    urls.append(u)
+        except Exception:
+            pass
 
     print(f"Collected {len(urls)} URLs; seeding via {ns.api}")
     stats = await seed(urls, ns.api, ns.concurrency)
@@ -143,4 +181,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

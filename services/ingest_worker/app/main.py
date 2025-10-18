@@ -253,17 +253,25 @@ async def notify_slack(body: SlackNotifyIn):
 
 @app.post("/hooks/slack")
 async def hooks_slack(
+    request: Request,
     x_slack_signature: str = Header(""),
     x_slack_request_timestamp: str = Header(""),
-    payload: str = Form(""),
 ):
     slack_webhooks_total.inc()
-    body = f"payload={payload}".encode("utf-8")
-    if not verify_signature(x_slack_request_timestamp, x_slack_signature, body):
+    # Verify signature using the exact raw body bytes as Slack sent (form-encoded)
+    raw_body = await request.body()
+    if not verify_signature(x_slack_request_timestamp, x_slack_signature, raw_body):
         slack_webhooks_invalid_total.inc()
         raise HTTPException(status_code=401, detail="invalid signature")
+    # Parse interactive payload from x-www-form-urlencoded: payload=<json>
     try:
-        event = json.loads(payload)
+        from urllib.parse import parse_qs
+
+        form = parse_qs(raw_body.decode("utf-8"), strict_parsing=False)
+        payload_list = form.get("payload", [])
+        if not payload_list:
+            raise ValueError("missing payload")
+        event = json.loads(payload_list[0])
     except Exception:
         raise HTTPException(status_code=400, detail="invalid payload")
     # Quick ack via response_url if provided
