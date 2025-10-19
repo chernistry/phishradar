@@ -4,7 +4,7 @@ This repo spins up n8n + FastAPI worker + Qdrant + Redis (and optionally Ollama)
 
 
    
-## Digest (EN)
+## Digest
 - What it is: A "radar" for phishing links. Converts URL/title/domain into vectors and searches for similar vectors in Qdrant (cosine similarity). New items go to Slack, duplicates go to logs.
 - For whom: SecOps/SOC/IT security. Working interface - cards in Slack with Approve/Reject buttons.
 - Source of links: Public feeds (via seeder), internal sources (via n8n), manual submissions (/ingest/submit).
@@ -53,14 +53,12 @@ Notes
 - KPI queries: `bq query --use_legacy_sql=false < bq/sql/kpis.sql`
 
 ## Common commands
-- make build — rebuild containers
-- make logs — tail logs
-- make api — enter API container shell
-
-## Troubleshooting
-1) Qdrant version mismatch
-   - Align client and server versions; see repo notes for upgrades.
-2) Ollama cold start
-   - Pre-pull model: `ollama pull embeddinggemma:latest`. First request warms the model.
-3) Port conflicts
-   - Adjust ports in infra/docker-compose.yml; ensure OS firewall allows local ports.
+- `./scripts/run.sh dev up` — Build + start compose stack
+- `./scripts/run.sh dev logs` — Tail compose logs
+- `./scripts/run.sh dev build` — Build images only
+- `./scripts/run.sh health` — Check API /healthz
+- `./scripts/run.sh check ollama` — Probe Ollama embeddings
+- `./scripts/run.sh check qdrant` — Show collection status
+- `./scripts/run.sh process [N]` — Process N items: enrich→embed→dedup
+- `./scripts/run.sh sources sync` — Trigger feed polling cycle
+- `./scripts/run.sh smoke` — Quick embed → dedup + checks
