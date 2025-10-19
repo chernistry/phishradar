@@ -19,9 +19,9 @@ quick architecture map and an interview-ready summary.
 ```mermaid
 flowchart TD
   subgraph Intake
-    FEEDS[(OpenPhish\nSinkingYachts)]
-    SYNC[POST /sources/sync\n(manual trigger)]
-    QUEUE[[IngestQueue\n(buffer/incoming.jsonl)]]
+    FEEDS[(OpenPhish<br/>SinkingYachts)]
+    SYNC[POST /sources/sync<br/>(manual trigger)]
+    QUEUE[[IngestQueue<br/>(buffer/incoming.jsonl)]]
     FEEDS --> SYNC --> QUEUE
   end
   CRON[n8n Cron / 10m] --> F1[POST /ingest/fetch]
