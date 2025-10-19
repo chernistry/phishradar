@@ -18,16 +18,16 @@ quick architecture map and an interview-ready summary.
 ## High-level Flow
 ```mermaid
 flowchart TD
-  subgraph Intake
+  subgraph Intake["Intake"]
     FEEDS[Feeds]
     SYNC[Manual sync]
     QUEUE[[IngestQueue]]
     FEEDS --> SYNC --> QUEUE
   end
-  CRON[n8n Cron (10m)] --> F1[ingest/fetch]
+  CRON[n8n Cron 10m] --> F1[ingest/fetch]
   F1 --> ENR[enrich]
-  ENR --> EMB[embed (Ollama)]
-  EMB --> DED[dedup (Qdrant)]
+  ENR --> EMB[embed Ollama]
+  EMB --> DED[dedup Qdrant]
   DED -->|duplicate| LOG1[log events_raw]
   DED -->|new| SLK[notify/slack]
   SLK --> LOG2[log alerts]
