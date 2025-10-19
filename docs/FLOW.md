@@ -6,7 +6,9 @@ quick architecture map and an interview-ready summary.
 
 ## Components
 - n8n (Cron + HTTP orchestration)
-- FastAPI worker (ingest, enrich, embed, dedup, notify, log, hooks)
+- FastAPI worker (ingest, enrich, embed, dedup, notify, log, hooks, manual feed sync)
+- Feed sources: OpenPhish public feed, SinkingYachts API (best-effort)
+- Redis (URL seen-cache for feed dedup/caching)
 - Ollama (local embeddings; model: `embeddinggemma:latest`)
 - Qdrant (vector store; cosine metric; collection: `phishradar_urls`)
 - Slack App (chat.postMessage + interactive buttons; signed webhooks)
@@ -16,10 +18,16 @@ quick architecture map and an interview-ready summary.
 ## High-level Flow
 ```mermaid
 flowchart TD
+  subgraph Intake
+    FEEDS[(OpenPhish\nSinkingYachts)]
+    SYNC[POST /sources/sync\n(manual trigger)]
+    QUEUE[[IngestQueue\n(buffer/incoming.jsonl)]]
+    FEEDS --> SYNC --> QUEUE
+  end
   CRON[n8n Cron / 10m] --> F1[POST /ingest/fetch]
   F1 --> ENR[POST /enrich]
-  ENR --> EMB[POST /embed Ollama]
-  EMB --> DED[POST /dedup Qdrant]
+  ENR --> EMB[POST /embed (Ollama)]
+  EMB --> DED[POST /dedup (Qdrant)]
   DED -->|is_duplicate=true| LOG1[POST /log events_raw]
   DED -->|is_duplicate=false| SLK[POST /notify/slack]
   SLK --> LOG2[POST /log alerts]
@@ -53,17 +61,19 @@ sequenceDiagram
 - Embed input: string built from `{url} | {title} | {domain}`.
 - Embedding provider: `OllamaEmbeddings.embed_async_single(text)` with timeouts + retries.
 - Decision rule:
-  - Search Qdrant top_k=5 (same-domain first, then global fallback).
+  - Search Qdrant top_k=5 with preference for same-domain neighbors.
   - Let `similarity` = max score among hits (cosine similarity in [0,1]).
-  - Duplicate if `similarity >= (1 - DEDUP_THRESHOLD)`; default `DEDUP_THRESHOLD = 0.12` → dup if ≥ 0.88.
-  - Always upsert (idempotent `sha256(url)`), so we track history.
+  - Duplicate if similarity passes the floor:
+    - Same-domain: `similarity >= DEDUP_SAME_DOMAIN_MIN_SIM` (default 0.94)
+    - Cross-domain: `similarity >= DEDUP_GLOBAL_MIN_SIM` (default 1.001 — effectively disabled)
+  - Always upsert (idempotent UUIDv5(URL)) so history/idempotency is preserved.
 
 ```mermaid
 flowchart LR
   A[Vector from /embed] --> B{Search Qdrant}
   B -->|hits exist| C[Take max similarity]
   B -->|no hits| C
-  C --> D{sim >= 1 - thr?}
+  C --> D{sim >= floor?}
   D -->|yes| DUP[Duplicate]
   D -->|no| NEW[New Alert]
 ```
@@ -110,7 +120,7 @@ sequenceDiagram
 ## Data Model Highlights
 - Qdrant collection: cosine metric, vectors size = `EMBED_DIM` from Ollama probe.
 - Payload keys (typical): `{url, domain, title, ts}`; indexes for `domain` (keyword), `ts` (integer).
-- Idempotency key: `sha256(url)` used as point id.
+- Idempotency key: UUIDv5(URL) used as point id.
 
 ## Branch Conditions Summary
 - Duplicate branch: `similarity >= 1 - DEDUP_THRESHOLD` → log only.
@@ -122,8 +132,36 @@ sequenceDiagram
 - `/ingest/fetch` and `/enrich` provide safe stubs for demo; replace with real feed/HTTP fetch in production.
 - BigQuery ingestion uses JSONL buffer + `bq load` helper script.
 
+### CLI Cheatsheet
+- Start stack: `./scripts/run.sh dev up`
+- Manual feed sync: `./scripts/run.sh sources sync [--force] [--limit N] [--src openphish|sinkingyachts|both]`
+- Process queue without n8n: `./scripts/run.sh process [N]`
+- Queue peek: `./scripts/run.sh fetch [N]`
+- Flush Redis seen-cache (dev): `./scripts/run.sh sources flush-seen`
+
 ## Future Enhancements
 - DLQ and idempotent replay via Redis.
 - Rich enrichment with SSRF-safe snapshots.
 - Automated KPIs pipeline and dashboards.
 - Rate limits via `aiolimiter` for feeds and Slack.
+
+---
+
+# Ops Runbook (merged)
+
+- Replay DLQ: `make dlq:replay` (to be implemented)
+- Threshold tuning: adjust `DEDUP_SAME_DOMAIN_MIN_SIM` and `DEDUP_GLOBAL_MIN_SIM`, observe dup rate.
+- Rotate Slack token: update env, restart API service.
+- BigQuery backfill: load from JSONL buffer when streaming insert fails.
+
+## Testing & CI
+- Local tests: `make test` or `pytest -q` (embeddings integration test disabled by default; enable with `PHISHRADAR_EMBED_TESTS=1`).
+- CI: GitHub Actions workflow `.github/workflows/ci.yml` runs ruff, black, mypy, and pytest.
+
+## Qdrant Notes
+- Ensure collection size equals `EMBED_DIM` (set at startup). Drop/recreate in dev via run script or API.
+- Payload indexes: `domain` (keyword), `ts` (integer).
+
+## Slack Webhooks
+- Signature verification enforced: HMAC v0 with timestamp freshness (±5m).
+- Webhook failures (401) counted via `phishradar_slack_webhooks_invalid_total`.
