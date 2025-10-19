@@ -19,20 +19,20 @@ quick architecture map and an interview-ready summary.
 ```mermaid
 flowchart TD
   subgraph Intake
-    FEEDS[(OpenPhish + SinkingYachts)]
-    SYNC[POST /sources/sync (manual)]
-    QUEUE[[IngestQueue (buffer/incoming.jsonl)]]
+    FEEDS[Feeds]
+    SYNC[Manual sync]
+    QUEUE[[IngestQueue]]
     FEEDS --> SYNC --> QUEUE
   end
-  CRON[n8n Cron / 10m] --> F1[POST /ingest/fetch]
-  F1 --> ENR[POST /enrich]
-  ENR --> EMB[POST /embed (Ollama)]
-  EMB --> DED[POST /dedup (Qdrant)]
-  DED -->|is_duplicate=true| LOG1[POST /log events_raw]
-  DED -->|is_duplicate=false| SLK[POST /notify/slack]
-  SLK --> LOG2[POST /log alerts]
-  SLACK[Slack Button] --> HOOK[POST /hooks/slack]
-  HOOK --> LOG3[POST /log alerts update]
+  CRON[n8n Cron (10m)] --> F1[/ingest/fetch]
+  F1 --> ENR[/enrich]
+  ENR --> EMB[/embed Ollama]
+  EMB --> DED[/dedup Qdrant]
+  DED -->|duplicate| LOG1[/log events_raw]
+  DED -->|new| SLK[/notify/slack]
+  SLK --> LOG2[/log alerts]
+  SLACK[Slack Button] --> HOOK[/hooks/slack]
+  HOOK --> LOG3[/log alerts update]
   DED --> QDR[Qdrant]
   EMB --> OLL[Ollama]
   LOG1 --> BQ[BigQuery]
