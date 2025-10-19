@@ -225,9 +225,19 @@ cmd_process() {
       ejson=$(jq -n --arg u "$url" --arg t "$title" --arg d "$domain" '{url:$u,title:$t,domain:$d}')
       vec=$(curl -fsS -X POST "$API/embed" -H 'content-type: application/json' -d "$ejson" | jq -c '.vector')
       # Dedup
-      local djson
+      local djson dres
       djson=$(jq -n --arg u "$url" --argjson v "$vec" --arg d "$domain" --arg t "$title" --arg ts "$(date +%s)" '{url:$u,vector:$v,payload:{domain:$d,title:$t,ts:($ts|tonumber)}}')
-      curl -fsS -X POST "$API/dedup" -H 'content-type: application/json' -d "$djson" | jq '{is_duplicate,similarity}'
+      dres=$(curl -fsS -X POST "$API/dedup" -H 'content-type: application/json' -d "$djson")
+      printf '%s' "$dres" | jq '{is_duplicate,similarity}'
+      # Log event
+      local model ms is_dup sim
+      model=$(printf '%s' "$ejson" | jq -r '.model // "unknown"')
+      ms=$(printf '%s' "$ejson" | jq -r '.ms // 0')
+      is_dup=$(printf '%s' "$dres" | jq -r '.is_duplicate')
+      sim=$(printf '%s' "$dres" | jq -r '.similarity')
+      local log_payload
+      log_payload=$(jq -n --arg u "$url" --arg t "$title" --arg m "$model" --argjson ms "$ms" --argjson dup "$is_dup" --argjson s "$sim" '{url:$u,title:$t,model:$m,ms:$ms,is_duplicate:$dup,similarity:$s,tokens:0,cost:0}')
+      curl -fsS -X POST "$API/log" -H 'content-type: application/json' -d "$log_payload" >/dev/null
       processed=$((processed+1))
       if [ "$processed" -ge "$target" ]; then break; fi
     done
