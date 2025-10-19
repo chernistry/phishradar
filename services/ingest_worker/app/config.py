@@ -63,5 +63,11 @@ class Settings:
     otel_exporter_otlp_endpoint: str | None = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     prometheus_port: int = int(os.getenv("PROMETHEUS_PORT", "9000"))
 
+    # Retry/backoff defaults
+    retry_max_attempts: int = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
+    retry_initial_delay: float = float(os.getenv("RETRY_INITIAL_DELAY", "0.25"))
+    retry_max_delay: float = float(os.getenv("RETRY_MAX_DELAY", "5"))
+    retry_multiplier: float = float(os.getenv("RETRY_MULTIPLIER", "2.0"))
+
 
 settings = Settings()

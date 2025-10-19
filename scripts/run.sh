@@ -38,8 +38,14 @@ Data/API:
   dedup URL [TITLE] [DOMAIN]       Embed → /dedup in one go
   submit URL [TITLE]               Enqueue URL for n8n via /ingest/submit
   fetch [N]                        Pop up to N items via /ingest/fetch (default 10)
+  process [N]                      Drain up to N items: enrich→embed→dedup
   notify-slack URL TITLE SIM [E]   Call /notify/slack with similarity and optional evidence
   mock-slack [approve|reject] URL  Send signed interactive payload to /hooks/slack
+
+Sources (feeds):
+  sources sync [--force] [--limit N] [--src openphish|sinkingyachts|both]
+                             Trigger one polling cycle (enqueue new URLs)
+  sources flush-seen        Flush Redis seen-cache (dev only)
 
 Qdrant maintenance:
   qdrant repair           Create/resize collection to current embed dim
@@ -67,12 +73,17 @@ json_escape() {
 }
 
 cmd_dev() {
+  local files=(-f infra/docker-compose.yml)
+  # Include override if present for bind mounts and extra envs
+  if [ -f infra/docker-compose.override.yml ]; then
+    files+=(-f infra/docker-compose.override.yml)
+  fi
   case "${1:-}" in
-    up) docker compose -f infra/docker-compose.yml up -d --build ;;
-    down) docker compose -f infra/docker-compose.yml down -v ;;
-    logs) docker compose -f infra/docker-compose.yml logs -f --tail=200 ;;
-    build) docker compose -f infra/docker-compose.yml build ;;
-    ps) docker compose -f infra/docker-compose.yml ps ;;
+    up) docker compose "${files[@]}" up -d --build ;;
+    down) docker compose "${files[@]}" down -v ;;
+    logs) docker compose "${files[@]}" logs -f --tail=200 ;;
+    build) docker compose "${files[@]}" build ;;
+    ps) docker compose "${files[@]}" ps ;;
     *) err "Usage: dev {up|down|logs|build|ps}"; exit 1 ;;
   esac
 }
@@ -191,6 +202,39 @@ cmd_fetch() {
   curl -fsS -X POST "$API/ingest/fetch?limit=$n" | jq .
 }
 
+cmd_process() {
+  local target="${1:-50}"
+  local processed=0
+  while [ "$processed" -lt "$target" ]; do
+    local batch
+    batch=$(curl -fsS -X POST "$API/ingest/fetch?limit=10")
+    local count
+    count=$(printf '%s' "$batch" | jq 'length')
+    if [ "$count" -eq 0 ]; then
+      info "Queue empty after processing $processed items"
+      break
+    fi
+    for i in $(seq 0 $((count-1))); do
+      local url title domain
+      url=$(printf '%s' "$batch" | jq -r ".[$i].url")
+      domain=$(printf '%s' "$batch" | jq -r ".[$i].domain")
+      title="$domain"
+      info "Processing: $url"
+      # Embed
+      local ejson vec
+      ejson=$(jq -n --arg u "$url" --arg t "$title" --arg d "$domain" '{url:$u,title:$t,domain:$d}')
+      vec=$(curl -fsS -X POST "$API/embed" -H 'content-type: application/json' -d "$ejson" | jq -c '.vector')
+      # Dedup
+      local djson
+      djson=$(jq -n --arg u "$url" --argjson v "$vec" --arg d "$domain" --arg t "$title" --arg ts "$(date +%s)" '{url:$u,vector:$v,payload:{domain:$d,title:$t,ts:($ts|tonumber)}}')
+      curl -fsS -X POST "$API/dedup" -H 'content-type: application/json' -d "$djson" | jq '{is_duplicate,similarity}'
+      processed=$((processed+1))
+      if [ "$processed" -ge "$target" ]; then break; fi
+    done
+  done
+  info "Processed $processed items"
+}
+
 cmd_mock_slack() {
   local action="${1:-approve}"
   local url="${2:?URL required}"
@@ -237,12 +281,41 @@ case "${1:-}" in
       wipe) shift; cmd_qdrant_wipe "$@" ;;
       *) err "Usage: qdrant {repair|wipe}"; exit 1;;
     esac ;;
+  sources)
+    shift; case "${1:-}" in
+      sync)
+        shift
+        force="0"; limit=""; src=""
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --force) force="1"; shift ;;
+            --limit) limit="$2"; shift 2 ;;
+            --src) src="$2"; shift 2 ;;
+            *) err "Unknown option: $1"; exit 1 ;;
+          esac
+        done
+        qs=("force=$force")
+        if [ -n "$limit" ]; then qs+=("limit=$limit"); fi
+        if [ -n "$src" ]; then qs+=("src=$src"); fi
+        url="$API/sources/sync?$(IFS='&'; echo "${qs[*]}")"
+        curl -fsS -X POST "$url" | jq . ;;
+      *) err "Usage: sources sync [--force] [--limit N] [--src openphish|sinkingyachts|both]"; exit 1;;
+    esac ;;
+  sources)
+    shift; case "${1:-}" in
+      flush-seen)
+        shift
+        info "Flushing Redis seen-cache keys (phishradar:seen:url:*)"
+        # Best-effort: within redis container
+        docker compose -f infra/docker-compose.yml -f infra/docker-compose.override.yml exec -T redis sh -lc "redis-cli --no-auth-warning -u \"${REDIS_URL:-redis://localhost:6379/0}\" keys 'phishradar:seen:url:*' | xargs -r redis-cli --no-auth-warning -u \"${REDIS_URL:-redis://localhost:6379/0}\" del | wc -l" ;;
+      *) err "Usage: sources {sync|flush-seen}"; exit 1;;
+    esac ;;
   seed) shift; cmd_seed "$@" ;;
   submit) shift; cmd_submit "$@" ;;
   fetch) shift; cmd_fetch "$@" ;;
+  process) shift; cmd_process "$@" ;;
   mock-slack) shift; cmd_mock_slack "$@" ;;
   smoke) shift; cmd_smoke "$@" ;;
   ""|help|-h|--help) usage ;;
   *) err "Unknown command: $1"; usage; exit 1 ;;
 esac
-

@@ -10,6 +10,8 @@ import httpx
 
 from .config import settings
 from .retry import net_retry
+from .http import async_http_client
+from .resilience import CircuitBreaker
 
 
 class SlackError(Exception):
@@ -38,6 +40,9 @@ def verify_signature(ts: str, sig: str, body: bytes) -> bool:
     return hmac.compare_digest(expected, sig)
 
 
+_slack_cb = CircuitBreaker(failure_threshold=3, recovery_time=10.0)
+
+
 @net_retry()
 async def send_message(text: str, blocks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     if not settings.slack_bot_token or not settings.slack_channel_id:
@@ -53,17 +58,20 @@ async def send_message(text: str, blocks: list[dict[str, Any]] | None = None) ->
     }
     if blocks:
         payload["blocks"] = blocks
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.post(url, headers=headers, json=payload)
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("ok"):
-            raise SlackError(str(data))
-        return data
+    async def _do() -> dict[str, Any]:
+        async with async_http_client(timeout=10.0) as client:
+            r = await client.post(url, headers=headers, json=payload)
+            r.raise_for_status()
+            data = r.json()
+            if not data.get("ok"):
+                raise SlackError(str(data))
+            return data
+
+    return await _slack_cb.run(_do)
 
 
 async def respond(response_url: str, text: str) -> None:
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with async_http_client(timeout=10.0) as client:
         await client.post(response_url, json={"text": text, "replace_original": False})
 
 

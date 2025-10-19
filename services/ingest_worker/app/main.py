@@ -62,12 +62,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await start_socket_mode()
     except Exception as e:
         logging.getLogger(__name__).warning(f"Socket Mode start failed: {e}")
-    # Start background feed poller
-    try:
-        app.state.feed_poller = FeedPoller()  # type: ignore[attr-defined]
-        await app.state.feed_poller.start()  # type: ignore[attr-defined]
-    except Exception as e:
-        logging.getLogger(__name__).warning(f"Feed poller start failed: {e}")
+    # Feed poller is not auto-started; triggered on demand via /sources/sync
     # Mark ready after startup tasks
     set_ready()
     yield
@@ -77,13 +72,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await stop_socket_mode()
     except Exception:
         pass
-    # Stop background feed poller
-    try:
-        poller = getattr(app.state, "feed_poller", None)  # type: ignore[attr-defined]
-        if poller:
-            await poller.stop()
-    except Exception:
-        pass
+    # No background feed poller to stop (manual trigger only)
 
 
 app = FastAPI(title="PhishRadar Ingest Worker", version="0.1.0", lifespan=lifespan)
@@ -320,16 +309,27 @@ async def ingest_fetch(request: Request) -> list[UrlItem]:
 
 
 @app.post("/sources/sync")
-async def sources_sync() -> dict[str, int]:
-    """Trigger a single poll cycle immediately.
+async def sources_sync(request: Request) -> dict[str, int]:
+    """Trigger a single poll cycle immediately (no background loop).
 
-    Useful for testing or on-demand catch-up without waiting for the interval.
+    Query params:
+      - force=1 to bypass seen-cache (for testing)
+      - limit=N to cap enqueued items
+      - src=openphish|sinkingyachts|both to select sources (default: both)
     """
-    poller = getattr(app.state, "feed_poller", None)  # type: ignore[attr-defined]
-    if not poller:
-        raise HTTPException(status_code=503, detail="poller not running")
     try:
-        count = await poller._poll_once()  # type: ignore[attr-defined]
+        qp = request.query_params
+        force = str(qp.get("force") or "").strip().lower() in ("1", "true", "yes")
+        lim_raw = qp.get("limit")
+        limit = int(str(lim_raw).strip()) if lim_raw is not None and str(lim_raw).strip().isdigit() else None
+        src_raw = str(qp.get("src") or "").strip().lower()
+        src = src_raw if src_raw in ("openphish", "sinkingyachts", "both") else None
+    except Exception:
+        force, limit, src = False, None, None
+    try:
+        poller = FeedPoller()
+        logging.getLogger(__name__).info(f"sources_sync: force={force} limit={limit} src={src}")
+        count = await poller._poll_once(force=force, limit=limit, src=src)
     except Exception:
         count = 0
     return {"enqueued": int(count)}

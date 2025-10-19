@@ -104,12 +104,23 @@ class FeedPoller:
             self._logger.warning(f"SinkingYachts fetch failed: {e}")
             return []
 
-    async def _poll_once(self) -> int:
+    async def _poll_once(self, *, force: bool = False, limit: int | None = None, src: str | None = None) -> int:
         new_count = 0
         async with httpx.AsyncClient(timeout=30.0) as client:
-            src1 = await self._fetch_openphish(client)
-            src2 = await self._fetch_sinkingyachts(client)
-        merged = src1 + src2
+            items: list[FeedItem] = []
+            take_open = src in (None, "openphish", "both")
+            take_sy = src in (None, "sinkingyachts", "both")
+            cnt_open = cnt_sy = 0
+            if take_open:
+                open_items = await self._fetch_openphish(client)
+                cnt_open = len(open_items)
+                items.extend(open_items)
+            if take_sy:
+                sy_items = await self._fetch_sinkingyachts(client)
+                cnt_sy = len(sy_items)
+                items.extend(sy_items)
+        self._logger.info(f"poll_once: take_open={take_open} take_sy={take_sy} count_open={cnt_open} count_sy={cnt_sy}")
+        merged = items
         # Basic URL-level dedup within this batch
         seen_local: set[str] = set()
         now_ts = int(time.time())
@@ -118,13 +129,14 @@ class FeedPoller:
             if not u or u in seen_local:
                 continue
             seen_local.add(u)
-            # Skip if seen recently via Redis
-            try:
-                is_new = await self._seen.mark_if_new(u)
-            except Exception:
-                is_new = True
-            if not is_new:
-                continue
+            # Skip if seen recently via Redis unless forced
+            if not force:
+                try:
+                    is_new = await self._seen.mark_if_new(u)
+                except Exception:
+                    is_new = True
+                if not is_new:
+                    continue
             dom = str(canonical_domain(u))
             row = {"url": u, "domain": dom, "title": dom, "ts": now_ts, "src": it.source}
             try:
@@ -132,6 +144,8 @@ class FeedPoller:
                 new_count += 1
             except Exception as e:
                 self._logger.warning(f"Failed to enqueue {u}: {e}")
+            if limit is not None and new_count >= max(0, int(limit)):
+                break
         if new_count:
             self._logger.info(f"Feed poller enqueued {new_count} URLs")
         return new_count
@@ -162,4 +176,3 @@ class FeedPoller:
                 await asyncio.wait_for(self._task, timeout=5)
             except Exception:
                 pass
-

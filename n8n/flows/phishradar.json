@@ -282,6 +282,17 @@
         ]
       ]
     },
+    "Log Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Slack Notify": {
       "main": [
         [
@@ -292,9 +303,20 @@
           }
         ]
       ]
+    },
+    "Log New Alert": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   },
