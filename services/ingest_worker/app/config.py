@@ -46,6 +46,19 @@ class Settings:
     rate_limit_feeds_per_host: int = int(os.getenv("RATE_LIMIT_FEEDS_PER_HOST", "2"))
     rate_limit_slack_rps: int = int(os.getenv("RATE_LIMIT_SLACK_RPS", "1"))
 
+    # Feeds/polling
+    openphish_feed_url: str = os.getenv(
+        "OPENPHISH_FEED_URL",
+        # New public feed location maintained via GitHub
+        "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt",
+    )
+    sinkingyachts_feed_url: str = os.getenv(
+        "SINKINGYACHTS_FEED_URL", "https://phish.sinking.yachts/v2/urls"
+    )
+    feed_poll_interval_seconds: int = int(os.getenv("FEED_POLL_INTERVAL_SECONDS", "60"))
+    feed_batch_limit: int = int(os.getenv("FEED_BATCH_LIMIT", "200"))
+    feed_seen_ttl_seconds: int = int(os.getenv("FEED_SEEN_TTL_SECONDS", str(14 * 24 * 3600)))
+
     # Observability
     otel_exporter_otlp_endpoint: str | None = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     prometheus_port: int = int(os.getenv("PROMETHEUS_PORT", "9000"))

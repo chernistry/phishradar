@@ -30,6 +30,13 @@ Notes
 - n8n: Flow orchestrator on :5678
 - ollama: Optional; host default :11434
 
+### Feeds
+- Sources: OpenPhish (public GitHub feed) and SinkingYachts community API.
+- Polling: background task inside the API service (interval `FEED_POLL_INTERVAL_SECONDS`, default 60s).
+- Caching: Redis-backed URL seen-cache with TTL (`FEED_SEEN_TTL_SECONDS`, default 14 days) to avoid re-enqueueing the same URL.
+- Manual sync: `POST /sources/sync` triggers one poll cycle immediately.
+- Queue: New URLs are appended to the file-backed queue (`buffer/incoming.jsonl`) and consumed by n8n via `/ingest/fetch`.
+
 ## Health
 - curl :8000/healthz
 - curl :8000/metrics

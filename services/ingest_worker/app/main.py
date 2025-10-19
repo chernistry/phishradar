@@ -62,6 +62,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await start_socket_mode()
     except Exception as e:
         logging.getLogger(__name__).warning(f"Socket Mode start failed: {e}")
+    # Start background feed poller
+    try:
+        app.state.feed_poller = FeedPoller()  # type: ignore[attr-defined]
+        await app.state.feed_poller.start()  # type: ignore[attr-defined]
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Feed poller start failed: {e}")
     # Mark ready after startup tasks
     set_ready()
     yield
@@ -69,6 +75,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     set_unready()
     try:
         await stop_socket_mode()
+    except Exception:
+        pass
+    # Stop background feed poller
+    try:
+        poller = getattr(app.state, "feed_poller", None)  # type: ignore[attr-defined]
+        if poller:
+            await poller.stop()
     except Exception:
         pass
 
@@ -152,6 +165,7 @@ from .logging_metrics import slack_messages_sent_total, slack_webhooks_total, sl
 from .domain import canonical_domain  # noqa: E402
 from .paths import BUFFER_DIR  # noqa: E402
 from .ingest_queue import IngestQueue  # noqa: E402
+from .feed_poller import FeedPoller  # noqa: E402
 
 
 @app.post("/embed", response_model=EmbedOut)
@@ -303,6 +317,22 @@ async def ingest_fetch(request: Request) -> list[UrlItem]:
     q = IngestQueue()
     rows = await q.fetch(limit=limit)
     return [UrlItem(url=r["url"], domain=r["domain"], ts=r["ts"]) for r in rows]
+
+
+@app.post("/sources/sync")
+async def sources_sync() -> dict[str, int]:
+    """Trigger a single poll cycle immediately.
+
+    Useful for testing or on-demand catch-up without waiting for the interval.
+    """
+    poller = getattr(app.state, "feed_poller", None)  # type: ignore[attr-defined]
+    if not poller:
+        raise HTTPException(status_code=503, detail="poller not running")
+    try:
+        count = await poller._poll_once()  # type: ignore[attr-defined]
+    except Exception:
+        count = 0
+    return {"enqueued": int(count)}
 
 
 @app.post("/ingest/submit")

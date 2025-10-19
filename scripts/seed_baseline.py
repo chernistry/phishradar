@@ -12,9 +12,10 @@ from urllib.parse import urlparse
 import httpx
 
 
-OPENPHISH_FEED = "https://openphish.com/feed.txt"
-# Some PhishTank endpoints require API key/path; allow override via CLI/ENV
-PHISHTANK_FEED_DEFAULT = "https://data.phishtank.com/data/online-valid.json"
+# OpenPhish public feed moved to GitHub
+OPENPHISH_FEED = "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt"
+# PhishTank registrations closed; skip unless an explicit URL is provided
+PHISHTANK_FEED_DEFAULT = None
 # Community API (no key): returns JSON objects with a `url` field
 SINKINGYACHTS_FEED = "https://phish.sinking.yachts/v2/urls"
 
@@ -137,11 +138,7 @@ async def seed(urls: Iterable[str], api_base: str, concurrency: int) -> SeedStat
 async def main() -> None:
     ap = argparse.ArgumentParser(description="Seed Qdrant with baseline phishing URLs")
     ap.add_argument("--limit", type=int, default=200, help="Max URLs per source")
-    ap.add_argument(
-        "--phishtank",
-        default=None,
-        help="PhishTank JSON URL (if accessible); default uses built-in placeholder",
-    )
+    ap.add_argument("--phishtank", default=None, help="PhishTank JSON URL (optional)")
     ap.add_argument("--api", default="http://localhost:8000", help="API base URL")
     ap.add_argument("--concurrency", type=int, default=10, help="Concurrent requests")
     ap.add_argument("--file", default="scripts/seeds/baseline.txt", help="Local fallback file with URLs (one per line)")
@@ -151,7 +148,7 @@ async def main() -> None:
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         src1 = await fetch_openphish(ns.limit, client)
-        src2 = await fetch_phishtank(ns.limit, client, ns.phishtank or PHISHTANK_FEED_DEFAULT)
+        src2 = await fetch_phishtank(ns.limit, client, ns.phishtank)
         src3 = await fetch_sinkingyachts(ns.limit, client)
     # De-duplicate and basic sanity
     urls = []
