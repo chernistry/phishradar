@@ -27,6 +27,8 @@ Dev/infra:
   dev logs               Tail compose logs
   dev build              Build images only
   dev ps                 Show running services
+  n8n export             Export workflows from container to n8n/flows/exported/
+  n8n import             Import workflows from repo JSON into container
 
 Health/checks:
   health                 Check API /healthz
@@ -54,6 +56,7 @@ Qdrant maintenance:
 Seed and smoke:
   seed [--limit N]        Seed baseline URLs (uses scripts/seed_baseline.py)
   smoke                   Quick embed → dedup + checks
+  dlq replay OP           Replay DLQ by op (e.g., qdrant_upsert)
 
 Env defaults (override via env): API, QDRANT_URL, QDRANT_COLLECTION, OLLAMA_BASE_URL, EMBED_MODEL_NAME
 USAGE
@@ -291,6 +294,21 @@ case "${1:-}" in
       wipe) shift; cmd_qdrant_wipe "$@" ;;
       *) err "Usage: qdrant {repair|wipe}"; exit 1;;
     esac ;;
+  n8n)
+    shift; case "${1:-}" in
+      export)
+        shift
+        mkdir -p n8n/flows/exported
+        docker compose -f infra/docker-compose.yml exec -T n8n sh -lc 'mkdir -p /data/exported && n8n export:workflow --all --output=/data/exported --separate' || {
+          err "Export failed (is n8n up?)"; exit 1; }
+        info "Exported to n8n/flows/exported (mounted /data/exported)" ;;
+      import)
+        shift
+        docker compose -f infra/docker-compose.yml exec -T n8n sh -lc 'test -f /data/phishradar.json && n8n import:workflow --input=/data/phishradar.json --separate --overwrite' || {
+          err "Import failed (phishradar.json missing or n8n down)"; exit 1; }
+        info "Imported phishradar.json into n8n" ;;
+      *) err "Usage: n8n {export|import}"; exit 1;;
+    esac ;;
   sources)
     shift; case "${1:-}" in
       sync)
@@ -326,6 +344,15 @@ case "${1:-}" in
   process) shift; cmd_process "$@" ;;
   mock-slack) shift; cmd_mock_slack "$@" ;;
   smoke) shift; cmd_smoke "$@" ;;
+  dlq)
+    shift; case "${1:-}" in
+      replay)
+        shift
+        op="${1:?OP required (qdrant_upsert)}"; shift || true
+        py=python3; command -v python >/dev/null 2>&1 && py=python
+        "$py" scripts/dlq_replay.py "$op" ;;
+      *) err "Usage: dlq replay OP"; exit 1;;
+    esac ;;
   ""|help|-h|--help) usage ;;
   *) err "Unknown command: $1"; usage; exit 1 ;;
 esac

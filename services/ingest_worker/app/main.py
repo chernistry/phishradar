@@ -152,6 +152,8 @@ from .slack import (
 )  # noqa: E402
 from .logging_metrics import slack_messages_sent_total, slack_webhooks_total, slack_webhooks_invalid_total  # noqa: E402
 from .domain import canonical_domain  # noqa: E402
+from .bq import write_receipts, write_events  # noqa: E402
+from .dlq import write_dlq  # noqa: E402
 from .paths import BUFFER_DIR  # noqa: E402
 from .ingest_queue import IngestQueue  # noqa: E402
 from .feed_poller import FeedPoller  # noqa: E402
@@ -202,6 +204,13 @@ async def embed(request: Request) -> EmbedOut:
     try:
         _append_jsonl("receipts.jsonl", {"model": model, "tokens": 0, "ms": ms, "cost": 0.0})
     except Exception:
+        pass
+    try:
+        write_receipts([
+            {"model": model, "tokens": 0, "ms": ms, "cost": 0.0}
+        ])
+    except Exception:
+        # bq module writes DLQ on failure
         pass
     return EmbedOut(vector=vector, model=model, ms=ms, url=str(url_val), title=str(title_val or dom), domain=dom)
 
@@ -427,6 +436,10 @@ async def log_event(request: Request, payload: Any = Body(None)) -> dict[str, bo
     except Exception:
         # best-effort; surface ok anyway to not break flow
         pass
+    try:
+        write_events([data])
+    except Exception:
+        pass
     return {"ok": True}
 
 
@@ -460,9 +473,13 @@ if __name__ == "__main__":
 @app.post("/notify/slack")
 async def notify_slack(body: SlackNotifyIn):
     blocks = action_blocks(str(body.url), body.title, body.similarity)
-    data = await send_message(text=f"New phishing alert: {body.title}", blocks=blocks)
-    slack_messages_sent_total.inc()
-    return {"ok": True, "ts": data.get("ts"), "channel": data.get("channel")}
+    try:
+        data = await send_message(text=f"New phishing alert: {body.title}", blocks=blocks)
+        slack_messages_sent_total.inc()
+        return {"ok": True, "ts": data.get("ts"), "channel": data.get("channel")}
+    except Exception as e:
+        write_dlq("slack_send", {"url": str(body.url), "title": body.title, "similarity": body.similarity}, str(e))
+        raise HTTPException(status_code=502, detail="slack_send_failed")
 
 
 @app.post("/hooks/slack")

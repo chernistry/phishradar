@@ -49,6 +49,33 @@ slack_webhooks_invalid_total = Counter(
     "phishradar_slack_webhooks_invalid_total", "Slack webhooks rejected (invalid)", registry=registry
 )
 
+# Qdrant metrics
+qdrant_requests_total = Counter(
+    "phishradar_qdrant_requests_total", "Qdrant requests", ["op"], registry=registry
+)
+qdrant_failures_total = Counter(
+    "phishradar_qdrant_failures_total", "Qdrant failures", ["op"], registry=registry
+)
+qdrant_retries_total = Counter(
+    "phishradar_qdrant_retries_total", "Qdrant retries", ["op"], registry=registry
+)
+qdrant_latency_seconds = Histogram(
+    "phishradar_qdrant_latency_seconds", "Qdrant op latency", ["op"], registry=registry,
+    buckets=(0.02, 0.05, 0.1, 0.25, 0.5, 1, 2)
+)
+
+# BigQuery metrics
+bq_writes_total = Counter(
+    "phishradar_bq_writes_total", "BigQuery write attempts", ["table"], registry=registry
+)
+bq_failures_total = Counter(
+    "phishradar_bq_failures_total", "BigQuery write failures", ["table"], registry=registry
+)
+bq_latency_seconds = Histogram(
+    "phishradar_bq_latency_seconds", "BigQuery write latency", ["table"], registry=registry,
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5)
+)
+
 # Readiness gauge for health reporting
 from prometheus_client import Gauge  # noqa: E402
 
