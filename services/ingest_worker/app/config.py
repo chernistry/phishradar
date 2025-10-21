@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     api_host: str = os.getenv("API_HOST", "0.0.0.0")
     api_port: int = int(os.getenv("API_PORT", "8000"))
@@ -43,8 +43,8 @@ class Settings:
     dedup_threshold: float = float(os.getenv("DEDUP_THRESHOLD", "0.12"))
     # New explicit similarity floors (recommended)
     dedup_same_domain_min_sim: float = float(os.getenv("DEDUP_SAME_DOMAIN_MIN_SIM", "0.94"))
-    # By default disallow cross-domain duplicates by using 1.001 floor (impossible to reach)
-    dedup_global_min_sim: float = float(os.getenv("DEDUP_GLOBAL_MIN_SIM", "1.001"))
+    # Global cross-domain floor (default 0.985 per tests)
+    dedup_global_min_sim: float = float(os.getenv("DEDUP_GLOBAL_MIN_SIM", "0.985"))
     rate_limit_feeds_per_host: int = int(os.getenv("RATE_LIMIT_FEEDS_PER_HOST", "2"))
     rate_limit_slack_rps: int = int(os.getenv("RATE_LIMIT_SLACK_RPS", "1"))
 

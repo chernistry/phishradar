@@ -3,7 +3,7 @@ import types
 
 import pytest
 
-from phishradar.services.ingest_worker.app.qdrant_client import QdrantStore
+from app.qdrant_client import QdrantStore
 
 
 @pytest.mark.asyncio
@@ -59,4 +59,3 @@ async def test_ensure_collection_recreate_on_mismatch(monkeypatch):
     await store.ensure_collection(vector_size=256)
     assert got["deleted"]
     assert got["recreated"]
-

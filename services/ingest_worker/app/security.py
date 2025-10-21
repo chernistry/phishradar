@@ -19,7 +19,9 @@ def assert_safe_url(url: str) -> None:
     p = urlparse(url)
     if p.scheme not in ("http", "https"):
         raise ValueError("disallowed_scheme")
-    host = p.hostname or ""
+    host = (p.hostname or "").lower()
+    if host in {"localhost", "ip6-localhost"}:
+        raise ValueError("disallowed_host")
     try:
         ip = ip_address(host)
     except ValueError:
@@ -28,4 +30,3 @@ def assert_safe_url(url: str) -> None:
     for net in _BLOCKED:
         if ip in net:
             raise ValueError("disallowed_host")
-
