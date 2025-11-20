@@ -5,6 +5,10 @@ import json
 import os
 from typing import Any
 
+import aiofiles
+import aiofiles.os
+from anyio import to_thread
+
 from .paths import BUFFER_DIR  # shared buffer dir path
 
 
@@ -17,37 +21,42 @@ class IngestQueue:
         os.makedirs(BUFFER_DIR, exist_ok=True)
 
     async def _lock(self, retries: int = 50, delay: float = 0.02) -> None:
+        """Acquire file lock using async operations."""
         for _ in range(retries):
             try:
-                # Acquire lock by creating a file exclusively
-                fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.close(fd)
+                # Use thread pool for blocking os.open call
+                await to_thread.run_sync(
+                    lambda: os.close(os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                )
                 return
             except FileExistsError:
                 await asyncio.sleep(delay)
         # Best-effort: if lock persists, proceed to avoid deadlock in dev
 
-    def _unlock(self) -> None:
+    async def _unlock(self) -> None:
+        """Release file lock using async operations."""
         try:
-            os.unlink(LOCK_FILE)
+            await aiofiles.os.remove(LOCK_FILE)
         except FileNotFoundError:
             pass
 
     async def push(self, row: dict[str, Any]) -> None:
+        """Push item to queue using async file I/O."""
         await self._lock()
         try:
-            with open(QUEUE_FILE, "a", encoding="utf-8") as f:
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            async with aiofiles.open(QUEUE_FILE, "a", encoding="utf-8") as f:
+                await f.write(json.dumps(row, ensure_ascii=False) + "\n")
         finally:
-            self._unlock()
+            await self._unlock()
 
     async def fetch(self, limit: int = 10) -> list[dict[str, Any]]:
+        """Fetch items from queue using async file I/O."""
         await self._lock()
         try:
             lines: list[str] = []
             try:
-                with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
+                async with aiofiles.open(QUEUE_FILE, "r", encoding="utf-8") as f:
+                    lines = await f.readlines()
             except FileNotFoundError:
                 lines = []
 
@@ -59,13 +68,13 @@ class IngestQueue:
             rest_lines = lines[to_take:]
             # Rewrite rest
             if rest_lines:
-                with open(QUEUE_FILE + ".tmp", "w", encoding="utf-8") as f:
-                    f.writelines(rest_lines)
-                os.replace(QUEUE_FILE + ".tmp", QUEUE_FILE)
+                async with aiofiles.open(QUEUE_FILE + ".tmp", "w", encoding="utf-8") as f:
+                    await f.writelines(rest_lines)
+                await aiofiles.os.replace(QUEUE_FILE + ".tmp", QUEUE_FILE)
             else:
                 # Empty queue
                 try:
-                    os.remove(QUEUE_FILE)
+                    await aiofiles.os.remove(QUEUE_FILE)
                 except FileNotFoundError:
                     pass
             out: list[dict[str, Any]] = []
@@ -76,4 +85,4 @@ class IngestQueue:
                     continue
             return out
         finally:
-            self._unlock()
+            await self._unlock()

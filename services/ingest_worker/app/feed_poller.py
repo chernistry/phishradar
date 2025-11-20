@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from cachetools import TTLCache
 
 try:
     # Prefer redis-py asyncio client if available
@@ -33,12 +34,14 @@ class FeedItem:
 class SeenCache:
     """URL-level de-duplication cache.
 
-    Uses Redis SETNX with TTL when available. Falls back to in-memory set.
+    Uses Redis SETNX with TTL when available. Falls back to TTL-based in-memory cache
+    with bounded size to prevent memory leaks.
     """
 
     def __init__(self, ttl_seconds: int = 14 * 24 * 3600) -> None:
         self.ttl = ttl_seconds
-        self._mem: set[str] = set()
+        # Use TTLCache instead of unbounded set - max 10k entries, TTL matches Redis
+        self._mem: TTLCache = TTLCache(maxsize=10000, ttl=ttl_seconds)
         self._redis = None
         if aioredis is not None:
             try:
@@ -54,10 +57,10 @@ class SeenCache:
                 return bool(added)
             except Exception:
                 pass
-        # Fallback to process-local memory cache
+        # Fallback to bounded TTL cache
         if key in self._mem:
             return False
-        self._mem.add(key)
+        self._mem[key] = 1  # Value doesn't matter, just presence
         return True
 
 

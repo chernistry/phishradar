@@ -206,7 +206,7 @@ async def embed(request: Request) -> EmbedOut:
     except Exception:
         pass
     try:
-        write_receipts([
+        await write_receipts([
             {"model": model, "tokens": 0, "ms": ms, "cost": 0.0}
         ])
     except Exception:
@@ -437,7 +437,7 @@ async def log_event(request: Request, payload: Any = Body(None)) -> dict[str, bo
         # best-effort; surface ok anyway to not break flow
         pass
     try:
-        write_events([data])
+        await write_events([data])
     except Exception:
         pass
     return {"ok": True}
